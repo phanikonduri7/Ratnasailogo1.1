@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>A4 Photo Sheet Collage Generator</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- html2canvas for High-Res PNG Download -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <style>
+        * {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        /* Standard A4 Aspect Ratio Box */
+        .a4-sheet {
+            width: 100%;
+            max-width: 680px;
+            aspect-ratio: 210 / 297;
+            background-color: #ffffff;
+            box-shadow: 0 20px 30px -10px rgba(0,0,0,0.7), 0 10px 15px -5px rgba(0,0,0,0.5);
+            margin: 0 auto;
+            position: relative;
+            box-sizing: border-box;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            padding: 3mm;
+            gap: 3mm;
+            overflow: hidden;
+            border-radius: 6px;
+        }
+
+        /* Slot styling */
+        .grid-slot {
+            position: relative;
+            background-color: #f8fafc;
+            border: 1.5px dashed #cbd5e1;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            touch-action: none;
+            border-radius: 4px;
+        }
+
+        .grid-slot.active-slot {
+            border: 3px solid #3b82f6;
+            box-shadow: inset 0 0 0 3px rgba(59, 130, 246, 0.4);
+        }
+
+        .slot-image-container {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+        }
+
+        .slot-image-container:active {
+            cursor: grabbing;
+        }
+
+        .slot-image-container img {
+            pointer-events: none;
+            transform-origin: center center;
+            transition: transform 0.05s linear;
+        }
+
+        /* Fit modes */
+        .fit-contain img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .fit-cover img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        /* Shop Sticker Overlay */
+        .shop-sticker {
+            position: absolute;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            cursor: ns-resize;
+            touch-action: none;
+            white-space: nowrap;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+            pointer-events: auto;
+        }
+
+        /* Sticker Presets */
+        .sticker-gold {
+            background: linear-gradient(135deg, #fbbf24, #d97706);
+            color: #1e1b4b;
+            border: 1.5px solid #fef08a;
+        }
+
+        .sticker-neon {
+            background: linear-gradient(135deg, #06b6d4, #2563eb);
+            color: #ffffff;
+            border: 1.5px solid #67e8f9;
+        }
+
+        .sticker-dark {
+            background: #0f172a;
+            color: #f8fafc;
+            border: 1.5px solid #334155;
+        }
+
+        .sticker-crimson {
+            background: linear-gradient(135deg, #ef4444, #991b1b);
+            color: #ffffff;
+            border: 1.5px solid #fca5a5;
+        }
+
+        /* Custom Touch Range Inputs */
+        input[type=range] {
+            height: 36px;
+            -webkit-appearance: none;
+            margin: 10px 0;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 12px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 6px;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            height: 28px;
+            width: 28px;
+            border-radius: 50%;
+            background: #3b82f6;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+            border: 2px solid #ffffff;
+        }
+
+        /* Hide scrollbars */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        /* Print Specific CSS */
+        @media print {
+            body {
+                background: white !important;
+                color: black !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+
+            .no-print {
+                display: none !important;
+            }
+
+            .a4-sheet {
+                width: 210mm !important;
+                height: 297mm !important;
+                max-width: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                page-break-after: always;
+                margin: 0 auto !important;
+                padding: 3mm !important;
+                gap: 3mm !important;
+            }
+
+            .grid-slot {
+                border: none !important;
+            }
+
+            @page {
+                size: A4 portrait;
+                margin: 0;
+            }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between pb-24 md:pb-6">
+
+    <!-- Mobile-Friendly Sticky Header -->
+    <header class="no-print bg-slate-900/95 backdrop-blur-md border-b border-slate-800 p-3 sm:p-4 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto flex justify-between items-center gap-3">
+            <div class="flex items-center space-x-3">
+                <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-blue-600/30">
+                    <i data-lucide="grid" class="w-7 h-7"></i>
+                </div>
+                <div>
+                    <h1 class="font-extrabold text-base sm:text-lg leading-tight text-white">Photo Sheet Builder</h1>
+                    <p class="text-xs text-slate-400 font-medium">3x3 A4 Grid • Mobile Touch Optimized</p>
+                </div>
+            </div>
+
+            <!-- Top Touch Action Buttons -->
+            <div class="flex items-center gap-2">
+                <button onclick="triggerPrint()" class="flex items-center justify-center h-12 px-4 bg-slate-800 active:bg-slate-700 text-slate-200 rounded-xl font-semibold text-sm transition border border-slate-700">
+                    <i data-lucide="printer" class="w-5 h-5 sm:mr-2"></i>
+                    <span class="hidden sm:inline">Direct Print</span>
+                </button>
+                <button onclick="downloadPNG()" class="flex items-center justify-center h-12 px-5 bg-blue-600 active:bg-blue-500 text-white rounded-xl font-bold text-sm transition shadow-lg shadow-blue-600/30">
+                    <i data-lucide="download" class="w-5 h-5 sm:mr-2"></i>
+                    <span>Save PNG</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Responsive Layout -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-3 sm:p-5 grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        <!-- Left Controls Column -->
+        <section class="no-print lg:col-span-5 flex flex-col gap-5">
+            
+            <!-- Step 1: Upload Photos & Set Quantity -->
+            <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 sm:p-5 shadow-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-bold text-base text-slate-100 flex items-center gap-2.5">
+                        <span class="w-8 h-8 rounded-xl bg-blue-600 text-white text-sm flex items-center justify-center font-extrabold shadow-md">1</span>
+                        Select Photos & Copies
+                    </h2>
+                    <span id="totalCopiesBadge" class="text-xs font-bold bg-blue-950 text-blue-300 border border-blue-800/60 px-3 py-1.5 rounded-full">0 Copies</span>
+                </div>
+
+                <!-- Big Touch Upload Box -->
+                <div id="dropZone" class="border-2 border-dashed border-slate-600 active:border-blue-500 hover:border-blue-500 rounded-2xl p-6 text-center cursor-pointer transition bg-slate-900/60 group">
+                    <input type="file" id="fileInput" multiple accept="image/*" class="hidden">
+                    <div class="w-16 h-16 rounded-2xl bg-slate-800 flex items-center justify-center mx-auto mb-3 text-blue-400 group-hover:scale-105 transition shadow-inner">
+                        <i data-lucide="image-plus" class="w-8 h-8"></i>
+                    </div>
+                    <p class="text-base font-bold text-slate-100">Tap Here to Upload Photos</p>
+                    <p class="text-xs text-slate-400 mt-1">Select one or multiple images from gallery</p>
+                </div>
+
+                <!-- Uploaded Images List with Enlarged +/- Touch Buttons -->
+                <div id="uploadedList" class="mt-4 space-y-3 max-h-[280px] overflow-y-auto pr-1 no-scrollbar">
+                    <p class="text-xs text-slate-500 text-center py-6 font-medium">No photos selected yet.</p>
+                </div>
+
+                <!-- Generate Sheet Large Action Button -->
+                <button id="applyBtn" onclick="buildSheetGrid()" disabled class="w-full mt-4 h-14 bg-emerald-600 active:bg-emerald-500 disabled:opacity-40 disabled:active:bg-emerald-600 text-white rounded-xl font-bold text-base flex items-center justify-center space-x-2 transition shadow-xl shadow-emerald-600/20">
+                    <i data-lucide="layout-grid" class="w-6 h-6"></i>
+                    <span>Generate A4 Sheet (3x3 Grid)</span>
+                </button>
+            </div>
+
+            <!-- Step 2: Shop Sticker / Branding Settings -->
+            <div class="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4 sm:p-5 shadow-2xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="font-bold text-base text-slate-100 flex items-center gap-2.5">
+                        <span class="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 text-sm flex items-center justify-center font-extrabold shadow-md">2</span>
+                        Shop Branding Sticker
+                    </h2>
+
+                    <!-- Big Touch Toggle Switch -->
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="stickerToggle" checked onchange="toggleStickerVisibility()" class="sr-only peer">
+                        <div class="w-14 h-8 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-amber-500"></div>
+                    </label>
+                </div>
+
+                <div id="stickerSettingsBox" class="space-y-4">
+                    <!-- Shop Name Input -->
+                    <div>
+                        <label class="text-xs font-bold text-slate-300 block mb-1.5">Shop Name</label>
+                        <input type="text" id="shopText" value="RATNA SAI CELL SHOPEE" oninput="updateStickerContent()" class="w-full h-12 bg-slate-900 border border-slate-700 rounded-xl px-4 text-sm font-semibold text-amber-400 focus:outline-none focus:border-amber-500">
+                    </div>
+
+                    <!-- Phone Number Input -->
+                    <div>
+                        <label class="text-xs font-bold text-slate-300 block mb-1.5">Phone / Contact (Optional)</label>
+                        <input type="text" id="shopPhone" value="" placeholder="e.g. 9876543210" oninput="updateStickerContent()" class="w-full h-12 bg-slate-900 border border-slate-700 rounded-xl px-4 text-sm font-semibold text-slate-200 focus:outline-none focus:border-amber-500">
+                    </div>
+
+                    <!-- Vertical Position Slider -->
+                    <div>
+                        <div class="flex justify-between items-center mb-1">
+                            <label class="text-xs font-bold text-slate-300">Sticker Vertical Position</label>
+                            <span id="stickerPosVal" class="text-xs font-bold text-amber-400">Bottom (8%)</span>
+                        </div>
+                        <input type="range" id="stickerPosSlider" min="2" max="90" value="8" oninput="updateStickerPosition(this.value)" class="w-full">
+                    </div>
+
+                    <!-- Badge Preset Style Buttons -->
+                    <div>
+                        <label class="text-xs font-bold text-slate-300 block mb-2">Badge Color Style</label>
+                        <div class="grid grid-cols-2 gap-2">
+                            <button onclick="setStickerStyle('sticker-gold')" class="h-11 rounded-xl text-xs font-bold sticker-gold shadow">Gold Luxury</button>
+                            <button onclick="setStickerStyle('sticker-neon')" class="h-11 rounded-xl text-xs font-bold sticker-neon shadow">Neon Cyan</button>
+                            <button onclick="setStickerStyle('sticker-dark')" class="h-11 rounded-xl text-xs font-bold sticker-dark shadow">Midnight Slate</button>
+                            <button onclick="setStickerStyle('sticker-crimson')" class="h-11 rounded-xl text-xs font-bold sticker-crimson shadow">Crimson Red</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+        <!-- Right Column: A4 Live Sheet Preview -->
+        <section class="lg:col-span-7 flex flex-col items-center">
+            
+            <!-- Mobile Page Pagination Bar -->
+            <div class="no-print w-full max-w-[680px] flex justify-between items-center mb-3 bg-slate-800/90 border border-slate-700 p-2 sm:p-3 rounded-2xl shadow-lg">
+                <span class="text-xs font-extrabold text-slate-200 pl-2">A4 Preview Sheet</span>
+                
+                <div class="flex items-center gap-2">
+                    <button id="prevPageBtn" onclick="changePage(-1)" disabled class="w-11 h-11 bg-slate-700 active:bg-slate-600 disabled:opacity-30 rounded-xl flex items-center justify-center text-slate-200">
+                        <i data-lucide="chevron-left" class="w-6 h-6"></i>
+                    </button>
+                    <span id="pageIndicator" class="text-xs font-extrabold text-blue-400 px-2 min-w-[80px] text-center">Page 1 / 1</span>
+                    <button id="nextPageBtn" onclick="changePage(1)" disabled class="w-11 h-11 bg-slate-700 active:bg-slate-600 disabled:opacity-30 rounded-xl flex items-center justify-center text-slate-200">
+                        <i data-lucide="chevron-right" class="w-6 h-6"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Interactive A4 Sheet Canvas Container -->
+            <div class="w-full flex justify-center overflow-x-auto py-1">
+                <div id="a4Paper" class="a4-sheet">
+                    <!-- 9 Slots dynamically rendered here -->
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- Floating Bottom Drawer for Photo Adjustments on Mobile -->
+    <div id="mobileEditDrawer" class="no-print fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-xl border-t-2 border-blue-500/80 p-4 z-50 rounded-t-3xl shadow-2xl transition-transform transform translate-y-full">
+        <div class="max-w-xl mx-auto space-y-4">
+            
+            <!-- Drawer Header -->
+            <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <div class="flex items-center gap-2">
+                    <div class="w-3 h-3 rounded-full bg-blue-500 animate-pulse"></div>
+                    <span id="activeSlotText" class="text-xs font-extrabold text-slate-200">Editing Slot #1</span>
+                </div>
+                <button onclick="closeMobileDrawer()" class="p-2 text-slate-400 active:text-white">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            <!-- Large Mobile Zoom Slider Control -->
+            <div class="flex items-center gap-3">
+                <button onclick="adjustZoom(-0.1)" class="w-12 h-12 bg-slate-800 active:bg-slate-700 rounded-xl text-slate-200 flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="zoom-out" class="w-6 h-6"></i>
+                </button>
+                <div class="flex-1">
+                    <input type="range" id="mobileZoomSlider" min="0.4" max="3" step="0.05" value="1" oninput="setZoom(parseFloat(this.value))">
+                </div>
+                <button onclick="adjustZoom(0.1)" class="w-12 h-12 bg-slate-800 active:bg-slate-700 rounded-xl text-slate-200 flex items-center justify-center flex-shrink-0">
+                    <i data-lucide="zoom-in" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            <!-- Large Touch Action Toolbar -->
+            <div class="grid grid-cols-3 gap-2">
+                <button onclick="rotateActiveSlot()" class="h-12 bg-slate-800 active:bg-slate-700 rounded-xl text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700">
+                    <i data-lucide="rotate-cw" class="w-5 h-5"></i> Rotate 90°
+                </button>
+                <button onclick="toggleFitMode()" id="fitModeBtn" class="h-12 bg-slate-800 active:bg-slate-700 rounded-xl text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700">
+                    <i data-lucide="scaling" class="w-5 h-5"></i> Full Fit
+                </button>
+                <button onclick="resetActiveSlot()" class="h-12 bg-slate-800 active:bg-slate-700 rounded-xl text-slate-200 font-bold text-xs flex items-center justify-center gap-2 border border-slate-700">
+                    <i data-lucide="refresh-cw" class="w-5 h-5"></i> Reset
+                </button>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // Global Application State
+        let uploadedImages = []; // { id, name, src, count }
+        let currentSheetPages = []; // Pages containing arrays of up to 9 photos
+        let currentPageIndex = 0;
+        let selectedSlotIndex = null;
+
+        // Sticker State
+        let isStickerOn = true;
+        let stickerName = "RATNA SAI CELL SHOPEE";
+        let stickerPhone = "";
+        let stickerPosPercent = 8;
+        let stickerStyleClass = "sticker-gold";
+
+        // Slot Transformations: pageIdx_slotIdx -> { x, y, scale, rotate, fitMode: 'contain'|'cover' }
+        let slotTransforms = {};
+
+        // Drag State
+        let isDraggingPhoto = false;
+        let isDraggingSticker = false;
+        let activeStickerSlotIndex = null;
+        let startX = 0, startY = 0;
+        let initialX = 0, initialY = 0;
+
+        // Pinch Zoom State
+        let initialPinchDistance = null;
+        let initialScale = 1;
+
+        window.onload = function() {
+            lucide.createIcons();
+            setupFileUploadHandlers();
+            initializeEmptySheet();
+        };
+
+        function setupFileUploadHandlers() {
+            const dropZone = document.getElementById('dropZone');
+            const fileInput = document.getElementById('fileInput');
+
+            dropZone.addEventListener('click', () => fileInput.click());
+            fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('border-blue-500', 'bg-slate-800');
+            });
+
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('border-blue-500', 'bg-slate-800');
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('border-blue-500', 'bg-slate-800');
+                if (e.dataTransfer.files.length) {
+                    handleFiles(e.dataTransfer.files);
+                }
+            });
+        }
+
+        function handleFiles(files) {
+            Array.from(files).forEach(file => {
+                if (!file.type.startsWith('image/')) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const imgObj = {
+                        id: 'img_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
+                        name: file.name,
+                        src: e.target.result,
+                        count: 1
+                    };
+                    uploadedImages.push(imgObj);
+                    renderUploadedList();
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function renderUploadedList() {
+            const listContainer = document.getElementById('uploadedList');
+            const applyBtn = document.getElementById('applyBtn');
+
+            if (uploadedImages.length === 0) {
+                listContainer.innerHTML = `<p class="text-xs text-slate-500 text-center py-6 font-medium">No photos selected yet.</p>`;
+                applyBtn.disabled = true;
+                updateTotalCopiesBadge(0);
+                return;
+            }
+
+            applyBtn.disabled = false;
+            let totalCopies = 0;
+
+            listContainer.innerHTML = uploadedImages.map((img, index) => {
+                totalCopies += img.count;
+                return `
+                    <div class="flex items-center justify-between bg-slate-900 border border-slate-700/80 p-2.5 rounded-xl">
+                        <div class="flex items-center space-x-3 overflow-hidden mr-2">
+                            <img src="${img.src}" class="w-12 h-12 object-cover rounded-lg border border-slate-700 flex-shrink-0">
+                            <span class="truncate text-xs font-bold text-slate-200">${img.name}</span>
+                        </div>
+                        
+                        <!-- Large Touch +/- Quantity Controls -->
+                        <div class="flex items-center space-x-2 flex-shrink-0">
+                            <div class="flex items-center border border-slate-700 bg-slate-800 rounded-xl overflow-hidden">
+                                <button onclick="updateQuantity(${index}, -1)" class="w-11 h-11 text-slate-200 active:bg-slate-700 font-extrabold text-lg flex items-center justify-center">-</button>
+                                <span class="px-2 text-sm font-extrabold text-blue-400 min-w-[28px] text-center">${img.count}</span>
+                                <button onclick="updateQuantity(${index}, 1)" class="w-11 h-11 text-slate-200 active:bg-slate-700 font-extrabold text-lg flex items-center justify-center">+</button>
+                            </div>
+                            <button onclick="removeImage(${index})" class="w-10 h-10 text-slate-500 active:text-red-400 flex items-center justify-center">
+                                <i data-lucide="trash-2" class="w-5 h-5"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            updateTotalCopiesBadge(totalCopies);
+            lucide.createIcons();
+        }
+
+        function updateQuantity(index, delta) {
+            if (uploadedImages[index]) {
+                uploadedImages[index].count = Math.max(1, uploadedImages[index].count + delta);
+                renderUploadedList();
+            }
+        }
+
+        function removeImage(index) {
+            uploadedImages.splice(index, 1);
+            renderUploadedList();
+        }
+
+        function updateTotalCopiesBadge(count) {
+            document.getElementById('totalCopiesBadge').innerText = `${count} ${count === 1 ? 'Copy' : 'Copies'}`;
+        }
+
+        function buildSheetGrid() {
+            let flattenedPhotos = [];
+            uploadedImages.forEach(img => {
+                for (let i = 0; i < img.count; i++) {
+                    flattenedPhotos.push(img);
+                }
+            });
+
+            currentSheetPages = [];
+            for (let i = 0; i < flattenedPhotos.length; i += 9) {
+                currentSheetPages.push(flattenedPhotos.slice(i, i + 9));
+            }
+
+            if (currentSheetPages.length === 0) {
+                initializeEmptySheet();
+                return;
+            }
+
+            currentPageIndex = 0;
+            slotTransforms = {};
+            renderPage(currentPageIndex);
+            updatePaginationUI();
+        }
+
+        function initializeEmptySheet() {
+            const paper = document.getElementById('a4Paper');
+            paper.innerHTML = '';
+            for (let i = 0; i < 9; i++) {
+                paper.innerHTML += `
+                    <div class="grid-slot">
+                        <div class="text-slate-300 text-xs flex flex-col items-center gap-1 opacity-40 font-medium">
+                            <i data-lucide="image" class="w-6 h-6"></i>
+                            <span>Slot ${i + 1}</span>
+                        </div>
+                    </div>
+                `;
+            }
+            lucide.createIcons();
+        }
+
+        function renderPage(pageIdx) {
+            const paper = document.getElementById('a4Paper');
+            paper.innerHTML = '';
+
+            const pagePhotos = currentSheetPages[pageIdx] || [];
+
+            for (let i = 0; i < 9; i++) {
+                const photo = pagePhotos[i];
+                const slotKey = `${pageIdx}_${i}`;
+
+                if (!slotTransforms[slotKey]) {
+                    slotTransforms[slotKey] = { x: 0, y: 0, scale: 1, rotate: 0, fitMode: 'contain' };
+                }
+
+                const transform = slotTransforms[slotKey];
+                const slot = document.createElement('div');
+                slot.className = `grid-slot fit-${transform.fitMode} ${selectedSlotIndex === i ? 'active-slot' : ''}`;
+                slot.dataset.slotIndex = i;
+
+                if (photo) {
+                    let stickerHTML = '';
+                    if (isStickerOn) {
+                        stickerHTML = `
+                            <div class="shop-sticker ${stickerStyleClass}" id="sticker_${i}" style="bottom: ${stickerPosPercent}%;">
+                                <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+                                <span class="text-[10px] tracking-wide uppercase">${stickerName}</span>
+                                ${stickerPhone ? `<span class="text-[9px] opacity-90 font-bold">• ${stickerPhone}</span>` : ''}
+                            </div>
+                        `;
+                    }
+
+                    slot.innerHTML = `
+                        <div class="slot-image-container" id="imgContainer_${i}">
+                            <img src="${photo.src}" id="slotImg_${i}" alt="Photo">
+                        </div>
+                        ${stickerHTML}
+                    `;
+
+                    slot.addEventListener('click', (e) => {
+                        if (!e.target.closest('.shop-sticker')) {
+                            selectSlot(i);
+                        }
+                    });
+
+                    attachInteractions(slot, i);
+                } else {
+                    slot.innerHTML = `
+                        <div class="text-slate-300 text-xs flex flex-col items-center gap-1 opacity-30">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            <span>Empty</span>
+                        </div>
+                    `;
+                }
+
+                paper.appendChild(slot);
+
+                if (photo) {
+                    applyTransform(i);
+                }
+            }
+
+            lucide.createIcons();
+        }
+
+        function updatePaginationUI() {
+            const prevBtn = document.getElementById('prevPageBtn');
+            const nextBtn = document.getElementById('nextPageBtn');
+            const pageIndicator = document.getElementById('pageIndicator');
+
+            const totalPages = currentSheetPages.length || 1;
+            pageIndicator.innerText = `Page ${currentPageIndex + 1} / ${totalPages}`;
+
+            prevBtn.disabled = currentPageIndex <= 0;
+            nextBtn.disabled = currentPageIndex >= totalPages - 1;
+        }
+
+        function changePage(delta) {
+            currentPageIndex += delta;
+            selectedSlotIndex = null;
+            closeMobileDrawer();
+            renderPage(currentPageIndex);
+            updatePaginationUI();
+        }
+
+        function selectSlot(index) {
+            selectedSlotIndex = index;
+            
+            document.querySelectorAll('.grid-slot').forEach((slot, i) => {
+                if (i === index) slot.classList.add('active-slot');
+                else slot.classList.remove('active-slot');
+            });
+
+            openMobileDrawer(index);
+        }
+
+        function openMobileDrawer(index) {
+            const drawer = document.getElementById('mobileEditDrawer');
+            const text = document.getElementById('activeSlotText');
+            const slider = document.getElementById('mobileZoomSlider');
+            const fitBtn = document.getElementById('fitModeBtn');
+
+            const slotKey = `${currentPageIndex}_${index}`;
+            const t = slotTransforms[slotKey] || { scale: 1, fitMode: 'contain' };
+
+            text.innerText = `Editing Photo Slot #${index + 1}`;
+            slider.value = t.scale;
+
+            fitBtn.innerHTML = t.fitMode === 'contain' 
+                ? `<i data-lucide="scaling" class="w-5 h-5"></i> Full Fit` 
+                : `<i data-lucide="maximize" class="w-5 h-5"></i> Fill Slot`;
+
+            drawer.classList.remove('translate-y-full');
+            lucide.createIcons();
+        }
+
+        function closeMobileDrawer() {
+            const drawer = document.getElementById('mobileEditDrawer');
+            drawer.classList.add('translate-y-full');
+            
+            const active = document.querySelector('.active-slot');
+            if (active) active.classList.remove('active-slot');
+            selectedSlotIndex = null;
+        }
+
+        function applyTransform(slotIdx) {
+            const img = document.getElementById(`slotImg_${slotIdx}`);
+            if (!img) return;
+
+            const slotKey = `${currentPageIndex}_${slotIdx}`;
+            const t = slotTransforms[slotKey];
+
+            img.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale}) rotate(${t.rotate}deg)`;
+        }
+
+        function attachInteractions(slotElement, slotIdx) {
+            const container = slotElement.querySelector('.slot-image-container');
+            const sticker = slotElement.querySelector('.shop-sticker');
+
+            if (container) {
+                // PHOTO DRAG & TOUCH
+                const startDragPhoto = (clientX, clientY) => {
+                    selectSlot(slotIdx);
+                    isDraggingPhoto = true;
+                    startX = clientX;
+                    startY = clientY;
+
+                    const slotKey = `${currentPageIndex}_${slotIdx}`;
+                    initialX = slotTransforms[slotKey].x;
+                    initialY = slotTransforms[slotKey].y;
+                };
+
+                const moveDragPhoto = (clientX, clientY) => {
+                    if (!isDraggingPhoto || selectedSlotIndex !== slotIdx) return;
+                    const dx = clientX - startX;
+                    const dy = clientY - startY;
+
+                    const slotKey = `${currentPageIndex}_${slotIdx}`;
+                    slotTransforms[slotKey].x = initialX + dx;
+                    slotTransforms[slotKey].y = initialY + dy;
+
+                    applyTransform(slotIdx);
+                };
+
+                const endDragPhoto = () => { isDraggingPhoto = false; };
+
+                container.addEventListener('mousedown', (e) => {
+                    e.preventDefault();
+                    startDragPhoto(e.clientX, e.clientY);
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (isDraggingPhoto) moveDragPhoto(e.clientX, e.clientY);
+                });
+
+                window.addEventListener('mouseup', endDragPhoto);
+
+                // Touch & Pinch Zoom
+                container.addEventListener('touchstart', (e) => {
+                    if (e.touches.length === 1) {
+                        startDragPhoto(e.touches[0].clientX, e.touches[0].clientY);
+                    } else if (e.touches.length === 2) {
+                        isDraggingPhoto = false;
+                        initialPinchDistance = getPinchDistance(e.touches);
+                        const slotKey = `${currentPageIndex}_${slotIdx}`;
+                        initialScale = slotTransforms[slotKey].scale;
+                    }
+                });
+
+                container.addEventListener('touchmove', (e) => {
+                    if (e.touches.length === 1 && isDraggingPhoto) {
+                        moveDragPhoto(e.touches[0].clientX, e.touches[0].clientY);
+                    } else if (e.touches.length === 2 && initialPinchDistance) {
+                        const currentDistance = getPinchDistance(e.touches);
+                        const scaleFactor = currentDistance / initialPinchDistance;
+                        const newScale = Math.min(Math.max(initialScale * scaleFactor, 0.4), 3);
+                        setZoom(newScale);
+                    }
+                });
+
+                container.addEventListener('touchend', (e) => {
+                    endDragPhoto();
+                    if (e.touches.length < 2) initialPinchDistance = null;
+                });
+            }
+
+            // STICKER DRAG (VERTICAL UP/DOWN)
+            if (sticker) {
+                const startStickerDrag = (clientY) => {
+                    isDraggingSticker = true;
+                    activeStickerSlotIndex = slotIdx;
+                    startY = clientY;
+                };
+
+                const moveStickerDrag = (clientY) => {
+                    if (!isDraggingSticker || activeStickerSlotIndex !== slotIdx) return;
+                    const slotRect = slotElement.getBoundingClientRect();
+                    const relativeY = clientY - slotRect.top;
+                    let percentage = 100 - ((relativeY / slotRect.height) * 100);
+                    percentage = Math.min(Math.max(percentage, 2), 90);
+
+                    updateStickerPosition(percentage);
+                };
+
+                const endStickerDrag = () => { isDraggingSticker = false; };
+
+                sticker.addEventListener('mousedown', (e) => {
+                    e.stopPropagation();
+                    startStickerDrag(e.clientY);
+                });
+
+                window.addEventListener('mousemove', (e) => {
+                    if (isDraggingSticker) moveStickerDrag(e.clientY);
+                });
+
+                window.addEventListener('mouseup', endStickerDrag);
+
+                sticker.addEventListener('touchstart', (e) => {
+                    e.stopPropagation();
+                    if (e.touches.length === 1) startStickerDrag(e.touches[0].clientY);
+                });
+
+                container.parentElement.addEventListener('touchmove', (e) => {
+                    if (isDraggingSticker && e.touches.length === 1) moveStickerDrag(e.touches[0].clientY);
+                });
+
+                container.parentElement.addEventListener('touchend', endStickerDrag);
+            }
+        }
+
+        function getPinchDistance(touches) {
+            const dx = touches[0].clientX - touches[1].clientX;
+            const dy = touches[0].clientY - touches[1].clientY;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function setZoom(val) {
+            if (selectedSlotIndex === null) return;
+            const slotKey = `${currentPageIndex}_${selectedSlotIndex}`;
+            slotTransforms[slotKey].scale = val;
+
+            document.getElementById('mobileZoomSlider').value = val;
+            applyTransform(selectedSlotIndex);
+        }
+
+        function adjustZoom(delta) {
+            if (selectedSlotIndex === null) return;
+            const slotKey = `${currentPageIndex}_${selectedSlotIndex}`;
+            const currentScale = slotTransforms[slotKey].scale;
+            const newScale = Math.min(Math.max(currentScale + delta, 0.4), 3);
+            setZoom(newScale);
+        }
+
+        function rotateActiveSlot() {
+            if (selectedSlotIndex === null) return;
+            const slotKey = `${currentPageIndex}_${selectedSlotIndex}`;
+            slotTransforms[slotKey].rotate = (slotTransforms[slotKey].rotate + 90) % 360;
+            applyTransform(selectedSlotIndex);
+        }
+
+        function toggleFitMode() {
+            if (selectedSlotIndex === null) return;
+            const slotKey = `${currentPageIndex}_${selectedSlotIndex}`;
+            const currentFit = slotTransforms[slotKey].fitMode;
+            const newFit = currentFit === 'contain' ? 'cover' : 'contain';
+            slotTransforms[slotKey].fitMode = newFit;
+
+            renderPage(currentPageIndex);
+            selectSlot(selectedSlotIndex);
+        }
+
+        function resetActiveSlot() {
+            if (selectedSlotIndex === null) return;
+            const slotKey = `${currentPageIndex}_${selectedSlotIndex}`;
+            slotTransforms[slotKey] = { x: 0, y: 0, scale: 1, rotate: 0, fitMode: 'contain' };
+            setZoom(1);
+            renderPage(currentPageIndex);
+            selectSlot(selectedSlotIndex);
+        }
+
+        // Sticker Settings Handler
+        function toggleStickerVisibility() {
+            isStickerOn = document.getElementById('stickerToggle').checked;
+            renderPage(currentPageIndex);
+        }
+
+        function updateStickerContent() {
+            stickerName = document.getElementById('shopText').value || "RATNA SAI CELL SHOPEE";
+            stickerPhone = document.getElementById('shopPhone').value || "";
+            renderPage(currentPageIndex);
+        }
+
+        function updateStickerPosition(val) {
+            stickerPosPercent = parseFloat(val);
+            document.getElementById('stickerPosSlider').value = val;
+            
+            let label = `${Math.round(val)}%`;
+            if (val < 20) label = `Bottom (${Math.round(val)}%)`;
+            else if (val > 70) label = `Top (${Math.round(val)}%)`;
+            else label = `Middle (${Math.round(val)}%)`;
+
+            document.getElementById('stickerPosVal').innerText = label;
+
+            document.querySelectorAll('.shop-sticker').forEach(sticker => {
+                sticker.style.bottom = `${val}%`;
+            });
+        }
+
+        function setStickerStyle(styleClass) {
+            stickerStyleClass = styleClass;
+            renderPage(currentPageIndex);
+        }
+
+        function triggerPrint() {
+            closeMobileDrawer();
+            window.print();
+        }
+
+        function downloadPNG() {
+            closeMobileDrawer();
+            const paper = document.getElementById('a4Paper');
+
+            html2canvas(paper, {
+                scale: 3,
+                useCORS: true,
+                backgroundColor: '#ffffff'
+            }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = `A4_Photo_Sheet_Page_${currentPageIndex + 1}.png`;
+                link.href = canvas.toDataURL('image/png');
+                link.click();
+            }).catch(err => {
+                console.error("PNG export error:", err);
+                alert("Could not generate high-res PNG. Please try again.");
+            });
+        }
+    </script>
+</body>
+  </html>
